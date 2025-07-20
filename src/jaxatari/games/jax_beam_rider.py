@@ -8,8 +8,8 @@ import chex
 from flax import struct
 import sys
 
-from jaxatari.environment import JaxEnvironment
-from jaxatari.renderers import JAXGameRenderer
+from src.jaxatari.environment import JaxEnvironment
+from src.jaxatari.renderers import JAXGameRenderer
 
 """TODOS:
 - Add torpedo shooting -> DONE

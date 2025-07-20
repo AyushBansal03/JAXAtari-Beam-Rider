@@ -1,7 +1,7 @@
 import importlib
 import inspect
 
-from jaxatari.environment import JaxEnvironment
+from src.jaxatari.environment import JaxEnvironment
 
 
 # Map of game names to their module paths
