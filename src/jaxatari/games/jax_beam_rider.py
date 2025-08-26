@@ -352,7 +352,7 @@ class BeamRiderEnv(JaxEnvironment[BeamRiderState, BeamRiderObservation, BeamRide
         self.constants = BeamRiderConstants()
         self.screen_width = self.constants.SCREEN_WIDTH
         self.screen_height = self.constants.SCREEN_HEIGHT
-        self.action_space_size = 9  # Updated from 6 to 9 for torpedo actions
+        self.action_space_size = 18
         self.beam_positions = self.constants.get_beam_positions()
 
         # JIT-compile the step function for performance
