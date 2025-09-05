@@ -1228,7 +1228,14 @@ class BeamRiderEnv(JaxEnvironment[BeamRiderState, BeamRiderObservation, BeamRide
             jnp.where(will_be_off_top_next, 0, retreat_flag)
         )
 
-        new_active = white_saucer_active & (new_y > -self.constants.ENEMY_HEIGHT)
+        is_horizon_patrol = movement_pattern == self.constants.WHITE_SAUCER_HORIZON_PATROL
+
+        new_active = white_saucer_active & (
+            (is_horizon_patrol & (new_y >= self.constants.HORIZON_LINE_Y)) |
+            (~is_horizon_patrol & (new_y > self.constants.HORIZON_LINE_Y))
+        )
+
+
 
         # Update enemy array with new positions and timers
         enemies = enemies.at[:, 0].set(jnp.where(white_saucer_active, new_x, enemies[:, 0]))
@@ -1580,12 +1587,12 @@ class BeamRiderEnv(JaxEnvironment[BeamRiderState, BeamRiderObservation, BeamRide
         rng_key, rejuv_beam_key = random.split(rng_key)
         rejuv_spawn_beam = random.randint(rejuv_beam_key, (), 0, self.constants.NUM_BEAMS)
         rejuv_spawn_x = self.beam_positions[rejuv_spawn_beam] - self.constants.ENEMY_WIDTH // 2
-        rejuv_spawn_y = self.constants.ENEMY_SPAWN_Y
+        rejuv_spawn_y = self.constants.HORIZON_LINE_Y
 
         # Regular enemy spawn (from top, random beam)
         regular_spawn_beam = random.randint(subkey3, (), 0, self.constants.NUM_BEAMS)
         regular_spawn_x = self.beam_positions[regular_spawn_beam] - self.constants.ENEMY_WIDTH // 2
-        regular_spawn_y = self.constants.ENEMY_SPAWN_Y
+        regular_spawn_y = self.constants.HORIZON_LINE_Y
 
         # Choose final spawn position based on enemy type
         spawn_x = jnp.where(
@@ -3388,7 +3395,7 @@ class BeamRiderRenderer(JAXGameRenderer):
             self.clock = pygame.time.Clock()
 
             # Load a pixelated font for UI 
-            font_path = os.path.join(os.path.dirname(__file__), "games", "PressStart2P.ttf")
+            font_path = os.path.join(os.path.dirname(__file__), "PressStart2P.ttf")
             self.font = pygame.font.Font(font_path, 14)
 
             self.env = BeamRiderEnv()
