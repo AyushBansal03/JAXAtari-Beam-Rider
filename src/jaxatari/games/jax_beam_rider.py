@@ -4136,7 +4136,7 @@ class BeamRiderRenderer(JAXGameRenderer):
 
     @partial(jax.jit, static_argnums=(0,))
     def _draw_3d_grid(self, screen: chex.Array, frame_count: int) -> chex.Array:
-        """Optimized 3D grid drawing"""
+        """Optimized 3D grid drawing with fully vectorized operations"""
 
         height = self.constants.SCREEN_HEIGHT
         width = self.constants.SCREEN_WIDTH
@@ -4146,145 +4146,64 @@ class BeamRiderRenderer(JAXGameRenderer):
         bottom_margin = int(height * 0.14)
         grid_height = height - top_margin - bottom_margin
 
-        # === Horizontal Lines - Batch computation ===
+        # === Horizontal Lines - Already optimized ===
         num_hlines = 7
         phase = (frame_count * 0.006) % 1.0
 
-        # Calculate all line positions at once
         line_indices = jnp.arange(num_hlines)
         t_values = (phase + line_indices / num_hlines) % 1.0
         y_positions = jnp.round((t_values ** 3.0) * grid_height).astype(int) + top_margin
         y_positions = jnp.clip(y_positions, 0, height - 1)
 
-        # Draw all horizontal lines using vectorized operations
-        def draw_hline(i, scr):
-            y = y_positions[i]
-            valid = (y >= 0) & (y < height)
-            return jax.lax.cond(
-                valid,
-                lambda s: s.at[y, :].set(line_color),
-                lambda s: s,
-                scr
-            )
+        # Vectorized horizontal line drawing
+        for y in y_positions:
+            screen = screen.at[y, :].set(line_color)
 
-        screen = jax.lax.fori_loop(0, num_hlines, draw_hline, screen)
-
-        # === Vertical Dotted Lines - Reduce dot count ===
+        # === FULLY VECTORIZED Vertical Dotted Lines ===
         beam_positions = self.beam_positions
         center_x = width / 2
         y0 = height - bottom_margin
         y1 = -height * 0.7
 
-        # Pre-calculate dot positions for all beams
-        num_dots_per_beam = 12  # Reduced from 200/25
+        num_dots_per_beam = 12
+        num_beams = self.constants.NUM_BEAMS
+
         t_top = jnp.clip((top_margin - y0) / (y1 - y0), 0.0, 1.0)
 
-        def draw_beam(beam_idx, scr):
-            x0 = beam_positions[beam_idx]
-            x1 = center_x + (x0 - center_x) * 0.05
+        # Create mesh of all dot positions at once
+        dot_ts = jnp.linspace(0, t_top, num_dots_per_beam)
+        beam_indices = jnp.arange(num_beams)
 
-            # Calculate dot positions
-            dot_ts = jnp.linspace(0, t_top, num_dots_per_beam)
+        # Broadcast to get all combinations
+        dot_ts_mesh, beam_indices_mesh = jnp.meshgrid(dot_ts, beam_indices, indexing='ij')
 
-            def draw_dot(dot_idx, scr_inner):
-                t = dot_ts[dot_idx]
-                y = jnp.round(y0 + (y1 - y0) * t).astype(int)
-                x = jnp.round(x0 + (x1 - x0) * t).astype(int)
+        # Calculate all dot positions vectorized
+        x0s = beam_positions[beam_indices_mesh]
+        x1s = center_x + (x0s - center_x) * 0.05
 
-                valid = (x >= 0) & (x < width) & (y >= 0) & (y < height)
+        ys = jnp.round(y0 + (y1 - y0) * dot_ts_mesh).astype(int)
+        xs = jnp.round(x0s + (x1s - x0s) * dot_ts_mesh).astype(int)
 
-                return jax.lax.cond(
-                    valid,
-                    lambda s: s.at[y, x].set(line_color),
-                    lambda s: s,
-                    scr_inner
-                )
+        # Flatten candidate dot coordinates (static length N = num_dots_per_beam * num_beams)
+        ys_flat = ys.reshape(-1)
+        xs_flat = xs.reshape(-1)
 
-            return jax.lax.fori_loop(0, num_dots_per_beam, draw_dot, scr)
+        # Compute validity once (still fine), but don't boolean-index with it
+        valid = (xs_flat >= 0) & (xs_flat < width) & (ys_flat >= 0) & (ys_flat < height)
 
-        screen = jax.lax.fori_loop(0, self.constants.NUM_BEAMS, draw_beam, screen)
+        # Build a 2D draw mask with scatter_add (no shape-changing boolean indexing)
+        ysc = jnp.clip(ys_flat, 0, height - 1)
+        xsc = jnp.clip(xs_flat, 0, width - 1)
+        flat_idx = ysc * width + xsc  # shape N, static at compile-time
+        weights = valid.astype(jnp.int32)  # 1 for valid dot, 0 for invalid
+
+        mask_flat = jnp.zeros((height * width,), dtype=jnp.int32).at[flat_idx].add(weights)
+        dot_mask = (mask_flat.reshape(height, width) > 0)  # [H, W] bool
+
+        # Color all dots in one shot
+        screen = jnp.where(dot_mask[..., None], line_color, screen)
 
         return screen
-
-        """More 3d version
-        @partial(jax.jit, static_argnums=(0,))
-        def _draw_3d_grid(self, screen: chex.Array, frame_count: int) -> chex.Array:
-            #Draw 3D grid with animated horizontal lines and 5 vertical dotted beam positions
-
-            height = self.constants.SCREEN_HEIGHT
-            width = self.constants.SCREEN_WIDTH
-            line_color = jnp.array([64, 64, 255], dtype=jnp.uint8)  # Blueish grid color
-
-            # === Margins ===
-            top_margin = int(height * 0.12)  # Reserved space for HUD
-            bottom_margin = int(height * 0.14)  # Reserved space below ship
-            grid_height = height - top_margin - bottom_margin
-
-            # Generate mesh grid for pixel coordinates
-            y_indices = jnp.arange(height)
-            x_indices = jnp.arange(width)
-            y_grid, x_grid = jnp.meshgrid(y_indices, x_indices, indexing="ij")
-
-            # === Horizontal Lines ===
-            num_hlines = 7  # Number of animated lines
-            phase = (frame_count * 0.003) % 1.0  # Smooth looping animation phase
-
-            def draw_hline(i, scr):
-                # Animate line position using easing (t^3 curve)
-                t = (phase + i / num_hlines) % 1.0
-                y = jnp.round((t ** 3.0) * grid_height).astype(int) + top_margin
-                y = jnp.clip(y, 0, height - 1)
-                mask = y_grid == y
-                return jnp.where(mask[..., None], line_color, scr)
-
-            # Draw each horizontal line
-            screen = jax.lax.fori_loop(0, num_hlines, draw_hline, screen)
-
-            # === Vertical Dotted Lines (5 beams with 3D perspective) ===
-            beam_positions = self.beam_positions
-            center_x = width / 2
-            y0 = height - bottom_margin  # Line starts here (bottom)
-            y1 = top_margin  # Line converges toward horizon
-
-            def draw_vline(i, scr):
-                # Starting x position at bottom (beam position)
-                x0 = beam_positions[i]
-                # Ending x position at top (converge toward center for 3D effect)
-                x1 = center_x + (x0 - center_x) * 0.3  # Converge partially toward center
-
-                # Number of dots along the line
-                num_steps = 120
-                dot_spacing = 8  # Draw dots every N steps for dotted effect
-
-                def body_fn(j, scr_inner):
-                    # Parametric interpolation along line (0.0 to 1.0)
-                    t = j / (num_steps - 1)
-
-                    # Interpolate position along the 3D perspective line
-                    y = y0 + (y1 - y0) * t
-                    x = x0 + (x1 - x0) * t
-
-                    # Convert to integer pixel coordinates
-                    xi = jnp.clip(jnp.round(x).astype(int), 0, width - 1)
-                    yi = jnp.clip(jnp.round(y).astype(int), 0, height - 1)
-
-                    # Only draw dots at specified intervals to create dotted effect
-                    should_draw_dot = (j % dot_spacing == 0) & (yi >= top_margin) & (yi <= y0)
-
-                    return jax.lax.cond(
-                        should_draw_dot,
-                        lambda s: s.at[yi, xi].set(line_color),  # Set pixel color
-                        lambda s: s,  # Else do nothing
-                        scr_inner
-                    )
-
-                return jax.lax.fori_loop(0, num_steps, body_fn, scr)
-
-            # Draw all 5 vertical dotted beam lines
-            screen = jax.lax.fori_loop(0, self.constants.NUM_BEAMS, draw_vline, screen)
-
-            return screen """
-
     @partial(jax.jit, static_argnums=(0,))
     def _draw_sentinel_sprite(self, screen: chex.Array, x: int, y: int, scale: float) -> chex.Array:
         """Draw sentinel ship sprite with multiple colors - simplified for scale=1.0"""
