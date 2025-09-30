@@ -4199,23 +4199,27 @@ class BeamRiderRenderer(JAXGameRenderer):
 
         screen = jax.lax.fori_loop(0, self.constants.NUM_BEAMS, draw_beam, screen)
 
-        # === Edge Dots (4 on each side in upper half) ===
-        # Position dots inward from the edges
-        left_edge_x = 8  # Moved inward from left edge
-        right_edge_x = width - 9  # Moved inward from right edge
+        # === Edge Dots (4 on each side in upper half)
+        spacing = self.beam_positions[1] - self.beam_positions[0]
+        edge_offset = 1.5 * spacing  # was 1.0 * spacing; push a bit more outside
+        left_x0 = self.beam_positions[0] - edge_offset
+        right_x0 = self.beam_positions[-1] + edge_offset
+
+        left_x1 = center_x + (left_x0 - center_x) * 0.05
+        right_x1 = center_x + (right_x0 - center_x) * 0.05
 
         upper_half_start = top_margin + 25  # Start below top margin
         upper_half_end = height // 2 + 10  # End around middle
-
-        # 4 dots evenly spaced in the upper half on each side
         edge_dot_positions = jnp.linspace(upper_half_start, upper_half_end, 4).astype(int)
 
         def draw_edge_dots(i, scr):
             y = edge_dot_positions[i]
-            # Left side dot (inward from edge)
-            scr = scr.at[y, left_edge_x].set(line_color)
-            # Right side dot (inward from edge)
-            scr = scr.at[y, right_edge_x].set(line_color)
+            # compute t along the same perspective line used for the beam dots
+            t = jnp.clip((y - y0) / (y1 - y0), 0.0, 1.0)
+            lx = jnp.clip(jnp.round(left_x0 + (left_x1 - left_x0) * t).astype(int), 0, width - 1)
+            rx = jnp.clip(jnp.round(right_x0 + (right_x1 - right_x0) * t).astype(int), 0, width - 1)
+            scr = scr.at[y, lx].set(line_color)
+            scr = scr.at[y, rx].set(line_color)
             return scr
 
         screen = jax.lax.fori_loop(0, 4, draw_edge_dots, screen)
