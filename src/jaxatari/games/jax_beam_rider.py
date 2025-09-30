@@ -4135,7 +4135,7 @@ class BeamRiderRenderer(JAXGameRenderer):
 
         height = self.constants.SCREEN_HEIGHT
         width = self.constants.SCREEN_WIDTH
-        line_color = jnp.array([64, 64, 255], dtype=jnp.uint8)
+        line_color = jnp.array([0, 180, 200], dtype=jnp.uint8)  # Changed from [64, 64, 255] to cyan
 
         top_margin = int(height * 0.12)
         bottom_margin = int(height * 0.14)
