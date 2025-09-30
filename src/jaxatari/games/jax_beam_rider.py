@@ -4438,67 +4438,58 @@ class BeamRiderRenderer(JAXGameRenderer):
 
     @partial(jax.jit, static_argnums=(0,))
     def _draw_ship(self, screen: chex.Array, ship: Ship) -> chex.Array:
-        """Draw the player ship with the actual sprite design"""
+        """Draw the player ship matching the reference design"""
         x, y = ship.x.astype(int), ship.y.astype(int)
 
         # Colors
         yellow = jnp.array([255, 255, 0], dtype=jnp.uint8)
-        purple = jnp.array([160, 32, 240], dtype=jnp.uint8)
+        red = jnp.array([200, 0, 0], dtype=jnp.uint8)
 
         # Create coordinate grids
         y_indices = jnp.arange(self.constants.SCREEN_HEIGHT)
         x_indices = jnp.arange(self.constants.SCREEN_WIDTH)
         y_grid, x_grid = jnp.meshgrid(y_indices, x_indices, indexing='ij')
 
-        # Scale factor
+        # Scale factor for larger ship
         scale = 2
 
-        # Define ship shape regions (scaled)
-        # Purple tip (top rows)
-        purple_mask = (
-            # Row 0: Purple tip center
-                ((y_grid >= y) & (y_grid < y + scale) &
-                 (x_grid >= x + 3 * scale) & (x_grid < x + 5 * scale)) |
-                # Additional purple pixels can be added here
-                False  # Placeholder for OR operations
+        # Red antenna structures on top (2 vertical bars)
+        red_mask = (
+            # Left antenna
+                ((y_grid >= y) & (y_grid < y + 2 * scale) &
+                 (x_grid >= x + 2 * scale) & (x_grid < x + 3 * scale)) |
+                # Right antenna
+                ((y_grid >= y) & (y_grid < y + 2 * scale) &
+                 (x_grid >= x + 5 * scale) & (x_grid < x + 6 * scale))
         )
 
-        # Yellow body
+        # Yellow pyramidal body
         yellow_mask = (
-            # Row 1: Upper body
-                ((y_grid >= y + scale) & (y_grid < y + 2 * scale) &
-                 (x_grid >= x + 2 * scale) & (x_grid < x + 6 * scale)) |
-                # Row 2: Middle body
+            # Top connector between antennas
                 ((y_grid >= y + 2 * scale) & (y_grid < y + 3 * scale) &
-                 (x_grid >= x + scale) & (x_grid < x + 7 * scale)) |
-                # Row 3: Full width
+                 (x_grid >= x + 2 * scale) & (x_grid < x + 6 * scale)) |
+                # Upper-middle section with side extensions
                 ((y_grid >= y + 3 * scale) & (y_grid < y + 4 * scale) &
-                 (x_grid >= x) & (x_grid < x + 8 * scale)) |
-                # Row 4: Lower body with gap
+                 ((x_grid >= x + scale) & (x_grid < x + 2 * scale) |
+                  (x_grid >= x + 2 * scale) & (x_grid < x + 6 * scale) |
+                  (x_grid >= x + 6 * scale) & (x_grid < x + 7 * scale))) |
+                # Middle section - fuller width
                 ((y_grid >= y + 4 * scale) & (y_grid < y + 5 * scale) &
+                 (x_grid >= x + scale) & (x_grid < x + 7 * scale)) |
+                # Lower-middle - gap in center
+                ((y_grid >= y + 5 * scale) & (y_grid < y + 6 * scale) &
                  ((x_grid >= x) & (x_grid < x + 3 * scale) |
                   (x_grid >= x + 5 * scale) & (x_grid < x + 8 * scale))) |
-                # Row 5: Bottom
-                ((y_grid >= y + 5 * scale) & (y_grid < y + 6 * scale) &
-                 ((x_grid >= x) & (x_grid < x + 2 * scale) |
-                  (x_grid >= x + 6 * scale) & (x_grid < x + 8 * scale)))
+                # Base - full width
+                ((y_grid >= y + 6 * scale) & (y_grid < y + 7 * scale) &
+                 (x_grid >= x) & (x_grid < x + 8 * scale))
         )
 
-        # Apply colors where masks are True
-        screen = jnp.where(
-            purple_mask[..., None],
-            purple,
-            screen
-        )
-
-        screen = jnp.where(
-            yellow_mask[..., None],
-            yellow,
-            screen
-        )
+        # Apply colors
+        screen = jnp.where(red_mask[..., None], red, screen)
+        screen = jnp.where(yellow_mask[..., None], yellow, screen)
 
         return screen
-
     @partial(jax.jit, static_argnums=(0,))
     def _draw_projectiles(self, screen: chex.Array, projectiles: chex.Array) -> chex.Array:
         """Draw projectiles - OPTIMIZED with vmap"""
