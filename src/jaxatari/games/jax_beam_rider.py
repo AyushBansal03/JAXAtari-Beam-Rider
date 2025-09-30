@@ -13,9 +13,6 @@ from jaxatari.environment import JaxEnvironment
 from jaxatari.renderers import JAXGameRenderer
 import jaxatari.spaces as spaces
 
-"""TODOS:
-"""
-
 
 class BeamRiderConstants(NamedTuple):
     """Container for all game constants"""
