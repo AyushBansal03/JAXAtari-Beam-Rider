@@ -4135,7 +4135,7 @@ class BeamRiderRenderer(JAXGameRenderer):
 
         height = self.constants.SCREEN_HEIGHT
         width = self.constants.SCREEN_WIDTH
-        line_color = jnp.array([0, 180, 200], dtype=jnp.uint8)  # Changed from [64, 64, 255] to cyan
+        line_color = jnp.array([0, 180, 200], dtype=jnp.uint8)  # Brighter cornflower blue
 
         top_margin = int(height * 0.12)
         bottom_margin = int(height * 0.14)
@@ -4164,14 +4164,14 @@ class BeamRiderRenderer(JAXGameRenderer):
 
         screen = jax.lax.fori_loop(0, num_hlines, draw_hline, screen)
 
-        # === Vertical Dotted Lines - Reduce dot count ===
+        # === Vertical Dotted Lines - More dots, brighter ===
         beam_positions = self.beam_positions
         center_x = width / 2
         y0 = height - bottom_margin
         y1 = -height * 0.7
 
-        # Pre-calculate dot positions for all beams
-        num_dots_per_beam = 12  # Reduced from 200/25
+        # Increased dot count for better visibility
+        num_dots_per_beam = 12  # Increased from 12 for denser dots
         t_top = jnp.clip((top_margin - y0) / (y1 - y0), 0.0, 1.0)
 
         def draw_beam(beam_idx, scr):
@@ -4198,6 +4198,27 @@ class BeamRiderRenderer(JAXGameRenderer):
             return jax.lax.fori_loop(0, num_dots_per_beam, draw_dot, scr)
 
         screen = jax.lax.fori_loop(0, self.constants.NUM_BEAMS, draw_beam, screen)
+
+        # === Edge Dots (4 on each side in upper half) ===
+        # Position dots inward from the edges
+        left_edge_x = 8  # Moved inward from left edge
+        right_edge_x = width - 9  # Moved inward from right edge
+
+        upper_half_start = top_margin + 25  # Start below top margin
+        upper_half_end = height // 2 + 10  # End around middle
+
+        # 4 dots evenly spaced in the upper half on each side
+        edge_dot_positions = jnp.linspace(upper_half_start, upper_half_end, 4).astype(int)
+
+        def draw_edge_dots(i, scr):
+            y = edge_dot_positions[i]
+            # Left side dot (inward from edge)
+            scr = scr.at[y, left_edge_x].set(line_color)
+            # Right side dot (inward from edge)
+            scr = scr.at[y, right_edge_x].set(line_color)
+            return scr
+
+        screen = jax.lax.fori_loop(0, 4, draw_edge_dots, screen)
 
         return screen
 
